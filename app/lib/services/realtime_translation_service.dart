@@ -181,7 +181,8 @@ class RealtimeTranslationService {
     _rendererInitialized = true;
   }
 
-  Future<SessionConnectionData> _createSession(LanguagePair languagePair) async {
+  Future<SessionConnectionData> _createSession(
+      LanguagePair languagePair) async {
     final response = await _httpClient.post(
       Uri.parse('${AppConfig.serverUrl}/session'),
       headers: {'Content-Type': 'application/json'},
@@ -389,18 +390,16 @@ class RealtimeTranslationService {
 
   void _finalizeCurrentOriginal(String transcript) {
     _conversation = _conversation.copyWith(
-      currentOriginalText: transcript.isEmpty
-          ? _conversation.currentOriginalText
-          : transcript,
+      currentOriginalText:
+          transcript.isEmpty ? _conversation.currentOriginalText : transcript,
       currentOriginalIsFinal: true,
     );
+    _maybeCommitCurrentTurn();
   }
 
   void _finalizeCurrentTranslation(String transcript) {
-    final translation = transcript.isEmpty
-        ? _conversation.currentTranslationText
-        : transcript;
-    final original = _conversation.currentOriginalText;
+    final translation =
+        transcript.isEmpty ? _conversation.currentTranslationText : transcript;
 
     if (translation.isEmpty) {
       _conversation = _conversation.copyWith(
@@ -409,15 +408,47 @@ class RealtimeTranslationService {
       return;
     }
 
-    final turn = ConversationTurn(
-      originalText: original,
-      translatedText: translation,
-      createdAt: DateTime.now(),
+    _conversation = _conversation.copyWith(
+      currentTranslationText: translation,
+      currentTranslationIsFinal: true,
     );
+    _maybeCommitCurrentTurn();
+  }
+
+  void _maybeCommitCurrentTurn() {
+    final original = _conversation.currentOriginalText.trim();
+    final translation = _conversation.currentTranslationText.trim();
+
+    if (original.isEmpty || translation.isEmpty) {
+      return;
+    }
+
+    final lastTurn =
+        _conversation.turns.isEmpty ? null : _conversation.turns.last;
+    if (lastTurn != null &&
+        _sameText(lastTurn.originalText, original) &&
+        _sameText(lastTurn.translatedText, translation)) {
+      _conversation = ConversationState(turns: _conversation.turns);
+      return;
+    }
+
+    final turns = [
+      ..._conversation.turns,
+      ConversationTurn(
+        originalText: original,
+        translatedText: translation,
+        createdAt: DateTime.now(),
+      ),
+    ];
 
     _conversation = ConversationState(
-      turns: [..._conversation.turns, turn],
+      turns: turns.length > 20 ? turns.sublist(turns.length - 20) : turns,
     );
+  }
+
+  bool _sameText(String left, String right) {
+    return left.trim().replaceAll(RegExp(r'\s+'), ' ') ==
+        right.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
 
   bool _tryFinalizeConversationItem(Map<String, dynamic> event) {
