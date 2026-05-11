@@ -326,12 +326,25 @@ class RealtimeTranslationService {
         _finalizeCurrentOriginal(_readTranscriptText(event));
         onConversationChanged(_conversation);
         break;
+      case 'conversation.item.done':
+        if (_tryFinalizeConversationItem(event)) {
+          onConversationChanged(_conversation);
+        }
+        break;
+      case 'response.content_part.done':
+        _finalizeCurrentTranslation(_readContentPartText(event));
+        onConversationChanged(_conversation);
+        break;
       case 'response.output_audio_transcript.done':
       case 'response.output_text.done':
       case 'session.output_transcript.completed':
       case 'session.output_transcript.done':
       case 'session.output_transcript.final':
         _finalizeCurrentTranslation(_readTranscriptText(event));
+        onConversationChanged(_conversation);
+        break;
+      case 'response.output_item.done':
+        _finalizeCurrentTranslation(_readConversationItemText(event));
         onConversationChanged(_conversation);
         break;
       case 'session.output_audio.delta':
@@ -389,7 +402,7 @@ class RealtimeTranslationService {
         : transcript;
     final original = _conversation.currentOriginalText;
 
-    if (original.isEmpty && translation.isEmpty) {
+    if (translation.isEmpty) {
       _conversation = _conversation.copyWith(
         currentTranslationIsFinal: true,
       );
@@ -405,6 +418,31 @@ class RealtimeTranslationService {
     _conversation = ConversationState(
       turns: [..._conversation.turns, turn],
     );
+  }
+
+  bool _tryFinalizeConversationItem(Map<String, dynamic> event) {
+    final item = event['item'];
+    if (item is! Map<String, dynamic>) {
+      return false;
+    }
+
+    final role = item['role'];
+    final text = _readConversationItemText(event);
+    if (text.isEmpty) {
+      return false;
+    }
+
+    if (role == 'user') {
+      _finalizeCurrentOriginal(text);
+      return true;
+    }
+
+    if (role == 'assistant') {
+      _finalizeCurrentTranslation(text);
+      return true;
+    }
+
+    return false;
   }
 
   String _readTextDelta(Map<String, dynamic> event) {
@@ -438,6 +476,57 @@ class RealtimeTranslationService {
     }
 
     return '';
+  }
+
+  String _readContentPartText(Map<String, dynamic> event) {
+    final part = event['part'];
+    if (part is! Map<String, dynamic>) {
+      return '';
+    }
+
+    final transcript = part['transcript'];
+    if (transcript is String) {
+      return _normalizeRealtimeText(transcript);
+    }
+
+    final text = part['text'];
+    if (text is String) {
+      return _normalizeRealtimeText(text);
+    }
+
+    return '';
+  }
+
+  String _readConversationItemText(Map<String, dynamic> event) {
+    final item = event['item'];
+    if (item is! Map<String, dynamic>) {
+      return '';
+    }
+
+    final content = item['content'];
+    if (content is! List) {
+      return '';
+    }
+
+    final parts = <String>[];
+    for (final part in content) {
+      if (part is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final transcript = part['transcript'];
+      if (transcript is String && transcript.isNotEmpty) {
+        parts.add(_normalizeRealtimeText(transcript));
+        continue;
+      }
+
+      final text = part['text'];
+      if (text is String && text.isNotEmpty) {
+        parts.add(_normalizeRealtimeText(text));
+      }
+    }
+
+    return parts.join('\n');
   }
 
   String _normalizeRealtimeText(String value) {
