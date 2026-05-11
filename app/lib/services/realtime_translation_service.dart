@@ -400,11 +400,16 @@ class RealtimeTranslationService {
   void _finalizeCurrentTranslation(String transcript) {
     final translation =
         transcript.isEmpty ? _conversation.currentTranslationText : transcript;
+    final original = _conversation.currentOriginalText.trim();
 
     if (translation.isEmpty) {
       _conversation = _conversation.copyWith(
         currentTranslationIsFinal: true,
       );
+      return;
+    }
+
+    if (original.isEmpty && _updateLastTurnTranslation(translation)) {
       return;
     }
 
@@ -449,6 +454,34 @@ class RealtimeTranslationService {
   bool _sameText(String left, String right) {
     return left.trim().replaceAll(RegExp(r'\s+'), ' ') ==
         right.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  bool _updateLastTurnTranslation(String translation) {
+    if (_conversation.turns.isEmpty) {
+      return false;
+    }
+
+    final nextTranslation = translation.trim();
+    if (nextTranslation.isEmpty) {
+      return false;
+    }
+
+    final lastTurn = _conversation.turns.last;
+    final previousTranslation = lastTurn.translatedText.trim();
+    if (previousTranslation.isNotEmpty &&
+        !nextTranslation.startsWith(previousTranslation) &&
+        !_sameText(previousTranslation, nextTranslation)) {
+      return false;
+    }
+
+    final turns = [..._conversation.turns];
+    turns[turns.length - 1] = ConversationTurn(
+      originalText: lastTurn.originalText,
+      translatedText: nextTranslation,
+      createdAt: lastTurn.createdAt,
+    );
+    _conversation = ConversationState(turns: turns);
+    return true;
   }
 
   bool _tryFinalizeConversationItem(Map<String, dynamic> event) {
@@ -706,8 +739,7 @@ class ConversationState {
   final bool currentOriginalIsFinal;
   final bool currentTranslationIsFinal;
 
-  bool get hasCurrent =>
-      currentOriginalText.isNotEmpty || currentTranslationText.isNotEmpty;
+  bool get hasCurrent => currentOriginalText.isNotEmpty;
 
   ConversationState copyWith({
     List<ConversationTurn>? turns,
