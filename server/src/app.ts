@@ -1,7 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { buildDirectionalTranslationInstructions } from "./prompts.js";
+import { buildBidirectionalTranslationInstructions } from "./prompts.js";
 
 dotenv.config();
 
@@ -28,11 +28,11 @@ app.post("/session", async (req, res) => {
     return;
   }
 
-  const sourceLanguage = parseLanguage(req.body?.sourceLanguage, "ko");
-  const targetLanguage = parseLanguage(req.body?.targetLanguage, "en");
-  const instructions = buildDirectionalTranslationInstructions(
-    sourceLanguage,
-    targetLanguage,
+  const primaryLanguage = parseLanguage(req.body?.primaryLanguage, "ko");
+  const secondaryLanguage = parseLanguage(req.body?.secondaryLanguage, "en");
+  const instructions = buildBidirectionalTranslationInstructions(
+    primaryLanguage,
+    secondaryLanguage,
   );
 
   try {
@@ -51,7 +51,6 @@ app.post("/session", async (req, res) => {
             input: {
               transcription: {
                 model: "gpt-4o-transcribe",
-                language: sourceLanguage,
               },
             },
             output: {
@@ -90,8 +89,8 @@ app.post("/session", async (req, res) => {
       value: findClientSecret(data),
       expiresAt: findExpiresAt(data),
       model: realtimeModel,
-      sourceLanguage,
-      targetLanguage,
+      primaryLanguage,
+      secondaryLanguage,
       callsUrl: realtimeCallsUrl,
     });
   } catch (error) {

@@ -18,7 +18,7 @@ enum ConnectionStatus {
 }
 
 typedef StatusChanged = void Function(ConnectionStatus status);
-typedef CaptionChanged = void Function(CaptionState captions);
+typedef ConversationChanged = void Function(ConversationState conversation);
 typedef ErrorChanged = void Function(String message);
 
 class RealtimeTranslationService {
@@ -33,12 +33,12 @@ class RealtimeTranslationService {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   bool _rendererInitialized = false;
-  CaptionState _captions = const CaptionState();
+  ConversationState _conversation = const ConversationState();
 
   Future<void> start({
     required LanguagePair languagePair,
     required StatusChanged onStatusChanged,
-    required CaptionChanged onCaptionChanged,
+    required ConversationChanged onConversationChanged,
     required ErrorChanged onError,
   }) async {
     try {
@@ -51,7 +51,7 @@ class RealtimeTranslationService {
       await _ensureRendererInitialized();
 
       debugPrint(
-        'Realtime start: language ${languagePair.sourceLanguage}->${languagePair.targetLanguage}',
+        'Realtime start: pair ${languagePair.primaryLanguage}<->${languagePair.secondaryLanguage}',
       );
       debugPrint('Realtime start: requesting server session');
       final session = await _createSession(languagePair);
@@ -83,7 +83,7 @@ class RealtimeTranslationService {
       _eventsChannel?.onMessage = (message) {
         _handleDataChannelMessage(
           message.text,
-          onCaptionChanged: onCaptionChanged,
+          onConversationChanged: onConversationChanged,
           onError: onError,
         );
       };
@@ -149,7 +149,7 @@ class RealtimeTranslationService {
     await _peerConnection?.dispose();
     _peerConnection = null;
 
-    _captions = const CaptionState();
+    _conversation = const ConversationState();
   }
 
   Future<void> dispose() async {
@@ -186,8 +186,8 @@ class RealtimeTranslationService {
       Uri.parse('${AppConfig.serverUrl}/session'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'sourceLanguage': languagePair.sourceLanguage,
-        'targetLanguage': languagePair.targetLanguage,
+        'primaryLanguage': languagePair.primaryLanguage,
+        'secondaryLanguage': languagePair.secondaryLanguage,
       }),
     );
 
@@ -206,7 +206,7 @@ class RealtimeTranslationService {
     }
 
     final callsUrl = body['callsUrl'] as String? ??
-        'https://api.openai.com/v1/realtime/translations/calls';
+        'https://api.openai.com/v1/realtime/calls';
 
     return SessionConnectionData(
       clientSecret: clientSecret,
@@ -296,7 +296,7 @@ class RealtimeTranslationService {
 
   void _handleDataChannelMessage(
     String data, {
-    required CaptionChanged onCaptionChanged,
+    required ConversationChanged onConversationChanged,
     required ErrorChanged onError,
   }) {
     final event = _decodeJsonObject(data);
@@ -310,29 +310,29 @@ class RealtimeTranslationService {
     switch (type) {
       case 'conversation.item.input_audio_transcription.delta':
       case 'session.input_transcript.delta':
-        _appendOriginalCaption(_readTextDelta(event));
-        onCaptionChanged(_captions);
+        _appendCurrentOriginal(_readTextDelta(event));
+        onConversationChanged(_conversation);
         break;
       case 'response.output_audio_transcript.delta':
       case 'response.output_text.delta':
       case 'session.output_transcript.delta':
-        _appendTranslatedCaption(_readTextDelta(event));
-        onCaptionChanged(_captions);
+        _appendCurrentTranslation(_readTextDelta(event));
+        onConversationChanged(_conversation);
         break;
       case 'conversation.item.input_audio_transcription.completed':
       case 'session.input_transcript.completed':
       case 'session.input_transcript.done':
       case 'session.input_transcript.final':
-        _finalizeOriginalCaption(_readTranscriptText(event));
-        onCaptionChanged(_captions);
+        _finalizeCurrentOriginal(_readTranscriptText(event));
+        onConversationChanged(_conversation);
         break;
       case 'response.output_audio_transcript.done':
       case 'response.output_text.done':
       case 'session.output_transcript.completed':
       case 'session.output_transcript.done':
       case 'session.output_transcript.final':
-        _finalizeTranslatedCaption(_readTranscriptText(event));
-        onCaptionChanged(_captions);
+        _finalizeCurrentTranslation(_readTranscriptText(event));
+        onConversationChanged(_conversation);
         break;
       case 'session.output_audio.delta':
       case 'session.output_audio.done':
@@ -346,54 +346,76 @@ class RealtimeTranslationService {
     }
   }
 
-  void _appendOriginalCaption(String delta) {
+  void _appendCurrentOriginal(String delta) {
     if (delta.isEmpty) {
       return;
     }
 
-    final base = _captions.originalIsFinal ? '' : _captions.originalText;
-    _captions = _captions.copyWith(
-      originalText: base + delta,
-      originalIsFinal: false,
+    final base = _conversation.currentOriginalIsFinal
+        ? ''
+        : _conversation.currentOriginalText;
+    _conversation = _conversation.copyWith(
+      currentOriginalText: base + delta,
+      currentOriginalIsFinal: false,
     );
   }
 
-  void _appendTranslatedCaption(String delta) {
+  void _appendCurrentTranslation(String delta) {
     if (delta.isEmpty) {
       return;
     }
 
-    final base = _captions.translatedIsFinal ? '' : _captions.translatedText;
-    _captions = _captions.copyWith(
-      translatedText: base + delta,
-      translatedIsFinal: false,
+    final base = _conversation.currentTranslationIsFinal
+        ? ''
+        : _conversation.currentTranslationText;
+    _conversation = _conversation.copyWith(
+      currentTranslationText: base + delta,
+      currentTranslationIsFinal: false,
     );
   }
 
-  void _finalizeOriginalCaption(String transcript) {
-    _captions = _captions.copyWith(
-      originalText: transcript.isEmpty ? _captions.originalText : transcript,
-      originalIsFinal: true,
+  void _finalizeCurrentOriginal(String transcript) {
+    _conversation = _conversation.copyWith(
+      currentOriginalText: transcript.isEmpty
+          ? _conversation.currentOriginalText
+          : transcript,
+      currentOriginalIsFinal: true,
     );
   }
 
-  void _finalizeTranslatedCaption(String transcript) {
-    _captions = _captions.copyWith(
-      translatedText:
-          transcript.isEmpty ? _captions.translatedText : transcript,
-      translatedIsFinal: true,
+  void _finalizeCurrentTranslation(String transcript) {
+    final translation = transcript.isEmpty
+        ? _conversation.currentTranslationText
+        : transcript;
+    final original = _conversation.currentOriginalText;
+
+    if (original.isEmpty && translation.isEmpty) {
+      _conversation = _conversation.copyWith(
+        currentTranslationIsFinal: true,
+      );
+      return;
+    }
+
+    final turn = ConversationTurn(
+      originalText: original,
+      translatedText: translation,
+      createdAt: DateTime.now(),
+    );
+
+    _conversation = ConversationState(
+      turns: [..._conversation.turns, turn],
     );
   }
 
   String _readTextDelta(Map<String, dynamic> event) {
     final delta = event['delta'];
     if (delta is String) {
-      return delta;
+      return _normalizeRealtimeText(delta);
     }
 
     final text = event['text'];
     if (text is String) {
-      return text;
+      return _normalizeRealtimeText(text);
     }
 
     return '';
@@ -402,20 +424,78 @@ class RealtimeTranslationService {
   String _readTranscriptText(Map<String, dynamic> event) {
     final transcript = event['transcript'];
     if (transcript is String) {
-      return transcript;
+      return _normalizeRealtimeText(transcript);
     }
 
     final text = event['text'];
     if (text is String) {
-      return text;
+      return _normalizeRealtimeText(text);
     }
 
     final delta = event['delta'];
     if (delta is String) {
-      return delta;
+      return _normalizeRealtimeText(delta);
     }
 
     return '';
+  }
+
+  String _normalizeRealtimeText(String value) {
+    if (!_looksLikeMojibake(value)) {
+      return value;
+    }
+
+    final bytes = <int>[];
+    for (final rune in value.runes) {
+      if (rune <= 0xff) {
+        bytes.add(rune);
+        continue;
+      }
+
+      final byte = _windows1252ByteByRune[rune];
+      if (byte == null) {
+        return value;
+      }
+      bytes.add(byte);
+    }
+
+    try {
+      final repaired = utf8.decode(bytes);
+      return _mojibakeScore(repaired) < _mojibakeScore(value)
+          ? repaired
+          : value;
+    } catch (_) {
+      return value;
+    }
+  }
+
+  bool _looksLikeMojibake(String value) {
+    return value.runes.any(
+      (rune) =>
+          (rune >= 0x80 && rune <= 0x9f) ||
+          rune == 0xc2 ||
+          rune == 0xc3 ||
+          rune == 0xec ||
+          rune == 0xed ||
+          rune == 0xea ||
+          _windows1252ByteByRune.containsKey(rune),
+    );
+  }
+
+  int _mojibakeScore(String value) {
+    var score = 0;
+    for (final rune in value.runes) {
+      if (rune >= 0xac00 && rune <= 0xd7a3) {
+        score -= 3;
+      } else if (rune >= 0x80 && rune <= 0x9f) {
+        score += 3;
+      } else if (_windows1252ByteByRune.containsKey(rune)) {
+        score += 2;
+      } else if (rune == 0xfffd) {
+        score += 5;
+      }
+    }
+    return score;
   }
 
   Map<String, dynamic> _decodeJsonObject(String value) {
@@ -491,32 +571,54 @@ class SessionConnectionData {
   final String callsUrl;
 }
 
-class CaptionState {
-  const CaptionState({
-    this.originalText = '',
-    this.translatedText = '',
-    this.originalIsFinal = false,
-    this.translatedIsFinal = false,
+class ConversationState {
+  const ConversationState({
+    this.turns = const [],
+    this.currentOriginalText = '',
+    this.currentTranslationText = '',
+    this.currentOriginalIsFinal = false,
+    this.currentTranslationIsFinal = false,
+  });
+
+  final List<ConversationTurn> turns;
+  final String currentOriginalText;
+  final String currentTranslationText;
+  final bool currentOriginalIsFinal;
+  final bool currentTranslationIsFinal;
+
+  bool get hasCurrent =>
+      currentOriginalText.isNotEmpty || currentTranslationText.isNotEmpty;
+
+  ConversationState copyWith({
+    List<ConversationTurn>? turns,
+    String? currentOriginalText,
+    String? currentTranslationText,
+    bool? currentOriginalIsFinal,
+    bool? currentTranslationIsFinal,
+  }) {
+    return ConversationState(
+      turns: turns ?? this.turns,
+      currentOriginalText: currentOriginalText ?? this.currentOriginalText,
+      currentTranslationText:
+          currentTranslationText ?? this.currentTranslationText,
+      currentOriginalIsFinal:
+          currentOriginalIsFinal ?? this.currentOriginalIsFinal,
+      currentTranslationIsFinal:
+          currentTranslationIsFinal ?? this.currentTranslationIsFinal,
+    );
+  }
+}
+
+class ConversationTurn {
+  const ConversationTurn({
+    required this.originalText,
+    required this.translatedText,
+    required this.createdAt,
   });
 
   final String originalText;
   final String translatedText;
-  final bool originalIsFinal;
-  final bool translatedIsFinal;
-
-  CaptionState copyWith({
-    String? originalText,
-    String? translatedText,
-    bool? originalIsFinal,
-    bool? translatedIsFinal,
-  }) {
-    return CaptionState(
-      originalText: originalText ?? this.originalText,
-      translatedText: translatedText ?? this.translatedText,
-      originalIsFinal: originalIsFinal ?? this.originalIsFinal,
-      translatedIsFinal: translatedIsFinal ?? this.translatedIsFinal,
-    );
-  }
+  final DateTime createdAt;
 }
 
 class RealtimeTranslationException implements Exception {
@@ -524,3 +626,33 @@ class RealtimeTranslationException implements Exception {
 
   final String message;
 }
+
+const _windows1252ByteByRune = <int, int>{
+  0x20ac: 0x80,
+  0x201a: 0x82,
+  0x0192: 0x83,
+  0x201e: 0x84,
+  0x2026: 0x85,
+  0x2020: 0x86,
+  0x2021: 0x87,
+  0x02c6: 0x88,
+  0x2030: 0x89,
+  0x0160: 0x8a,
+  0x2039: 0x8b,
+  0x0152: 0x8c,
+  0x017d: 0x8e,
+  0x2018: 0x91,
+  0x2019: 0x92,
+  0x201c: 0x93,
+  0x201d: 0x94,
+  0x2022: 0x95,
+  0x2013: 0x96,
+  0x2014: 0x97,
+  0x02dc: 0x98,
+  0x2122: 0x99,
+  0x0161: 0x9a,
+  0x203a: 0x9b,
+  0x0153: 0x9c,
+  0x017e: 0x9e,
+  0x0178: 0x9f,
+};

@@ -39,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   LanguagePair _selectedLanguagePair = languagePairs.first;
   ConnectionStatus _status = ConnectionStatus.disconnected;
-  CaptionState _captions = const CaptionState();
+  ConversationState _conversation = const ConversationState();
   String _errorMessage = '';
 
   bool get _canStart =>
@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     debugPrint('MediBridge start pressed');
     setState(() {
       _status = ConnectionStatus.connecting;
-      _captions = const CaptionState();
+      _conversation = const ConversationState();
       _errorMessage = '';
     });
 
@@ -89,10 +89,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _status = status;
           });
         },
-        onCaptionChanged: (captions) {
+        onConversationChanged: (conversation) {
           if (!mounted) return;
           setState(() {
-            _captions = captions;
+            _conversation = conversation;
           });
         },
         onError: (message) {
@@ -132,6 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Language',
+                helperText: 'Hands-free two-way interpreting',
                 border: OutlineInputBorder(),
               ),
               items: languagePairs
@@ -176,18 +177,9 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
             _StatusPanel(status: _status),
             const SizedBox(height: 16),
-            _TranscriptPanel(
-              title: 'Recent original',
-              text: _captions.originalText,
-              isFinal: _captions.originalIsFinal,
-              placeholder: 'Original speech will appear here.',
-            ),
-            const SizedBox(height: 12),
-            _TranscriptPanel(
-              title: 'Recent translation',
-              text: _captions.translatedText,
-              isFinal: _captions.translatedIsFinal,
-              placeholder: 'Translation will appear here.',
+            _ConversationPanel(
+              conversation: _conversation,
+              languagePair: _selectedLanguagePair,
             ),
             const SizedBox(height: 12),
             _ErrorPanel(message: _errorMessage),
@@ -220,24 +212,30 @@ class _StatusPanel extends StatelessWidget {
   }
 }
 
-class _TranscriptPanel extends StatelessWidget {
-  const _TranscriptPanel({
-    required this.title,
-    required this.text,
-    required this.isFinal,
-    required this.placeholder,
+class _ConversationPanel extends StatelessWidget {
+  const _ConversationPanel({
+    required this.conversation,
+    required this.languagePair,
   });
 
-  final String title;
-  final String text;
-  final bool isFinal;
-  final String placeholder;
+  final ConversationState conversation;
+  final LanguagePair languagePair;
 
   @override
   Widget build(BuildContext context) {
+    final turns = [
+      ...conversation.turns,
+      if (conversation.hasCurrent)
+        ConversationTurn(
+          originalText: conversation.currentOriginalText,
+          translatedText: conversation.currentTranslationText,
+          createdAt: DateTime.now(),
+        ),
+    ];
+
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 140),
+      constraints: const BoxConstraints(minHeight: 280),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(color: Theme.of(context).colorScheme.outline),
@@ -246,32 +244,88 @@ class _TranscriptPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              Text(
-                text.isEmpty ? '' : (isFinal ? 'final' : 'partial'),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
+          Text(
+            'Conversation',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: 8),
-          Text(
-            text.isEmpty ? placeholder : text,
-            style: TextStyle(
-              color: text.isEmpty
-                  ? Theme.of(context).colorScheme.onSurfaceVariant
-                  : Theme.of(context).colorScheme.onSurface,
+          if (turns.isEmpty)
+            Text(
+              '${languagePair.primaryLanguageName} and ${languagePair.secondaryLanguageName} speech will appear here.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            )
+          else
+            ...turns.map(
+              (turn) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ConversationTurnView(turn: turn),
+              ),
             ),
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ConversationTurnView extends StatelessWidget {
+  const _ConversationTurnView({required this.turn});
+
+  final ConversationTurn turn;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Original',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              turn.originalText.isEmpty ? 'Listening...' : turn.originalText,
+              style: TextStyle(
+                color: turn.originalText.isEmpty
+                    ? colorScheme.onSurfaceVariant
+                    : colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Translation',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              turn.translatedText.isEmpty
+                  ? 'Waiting for translation...'
+                  : turn.translatedText,
+              style: TextStyle(
+                color: turn.translatedText.isEmpty
+                    ? colorScheme.onSurfaceVariant
+                    : colorScheme.onSurface,
+                fontWeight: turn.translatedText.isEmpty
+                    ? FontWeight.normal
+                    : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

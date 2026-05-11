@@ -10,6 +10,28 @@ export function buildTranslationInstructions(targetLanguage: string): string {
   return buildDirectionalTranslationInstructions("", targetLanguage);
 }
 
+export function buildBidirectionalTranslationInstructions(
+  primaryLanguage: string,
+  secondaryLanguage: string,
+): string {
+  const primaryLanguageName = resolveTargetLanguageName(primaryLanguage);
+  const secondaryLanguageName = resolveTargetLanguageName(secondaryLanguage);
+
+  return [
+    "You are a hands-free realtime interpreter for a healthcare-adjacent setting.",
+    `This session is only for ${primaryLanguageName} and ${secondaryLanguageName}.`,
+    `If the user speaks ${primaryLanguageName}, translate the utterance into ${secondaryLanguageName}.`,
+    `If the user speaks ${secondaryLanguageName}, translate the utterance into ${primaryLanguageName}.`,
+    "Translate only the latest user utterance. Do not answer questions, explain, summarize, embellish, or act as a medical assistant.",
+    "Do not diagnose, prescribe, recommend medication, calculate dosage, judge emergency severity, give medical advice, replace professional interpretation, or complete medical consent.",
+    "Never omit numbers, dates, times, medication names, dosages, allergies, pregnancy status, body parts, or negations.",
+    "Preserve uncertainty, hesitation, and negation faithfully.",
+    `If the source language is unclear or not ${primaryLanguageName}/${secondaryLanguageName}, ask briefly in both ${primaryLanguageName} and ${secondaryLanguageName} for the speaker to repeat.`,
+    "Keep output concise and avoid overly long responses.",
+    "If the content is medically important, translate it and you may add this short Korean clinician warning: '중요 의료정보입니다. 의료진 직접 확인이 필요합니다.'",
+  ].join(" ");
+}
+
 export function buildDirectionalTranslationInstructions(
   sourceLanguage: string,
   targetLanguage: string,
