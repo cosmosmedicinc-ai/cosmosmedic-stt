@@ -1,17 +1,17 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { buildDirectionalTranslationInstructions } from "./prompts.js";
 
 dotenv.config();
 
 const app = express();
 const openAiApiKey = process.env.OPENAI_API_KEY;
 
-const realtimeTranslationModel = "gpt-realtime-translate";
-const realtimeTranslationClientSecretsUrl =
-  "https://api.openai.com/v1/realtime/translations/client_secrets";
-const realtimeTranslationCallsUrl =
-  "https://api.openai.com/v1/realtime/translations/calls";
+const realtimeModel = "gpt-realtime";
+const realtimeClientSecretsUrl =
+  "https://api.openai.com/v1/realtime/client_secrets";
+const realtimeCallsUrl = "https://api.openai.com/v1/realtime/calls";
 
 app.use(express.json({ limit: "16kb" }));
 
@@ -28,10 +28,15 @@ app.post("/session", async (req, res) => {
     return;
   }
 
+  const sourceLanguage = parseLanguage(req.body?.sourceLanguage, "ko");
   const targetLanguage = parseLanguage(req.body?.targetLanguage, "en");
+  const instructions = buildDirectionalTranslationInstructions(
+    sourceLanguage,
+    targetLanguage,
+  );
 
   try {
-    const response = await fetch(realtimeTranslationClientSecretsUrl, {
+    const response = await fetch(realtimeClientSecretsUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${openAiApiKey}`,
@@ -39,15 +44,18 @@ app.post("/session", async (req, res) => {
       },
       body: JSON.stringify({
         session: {
-          model: realtimeTranslationModel,
+          type: "realtime",
+          model: realtimeModel,
+          instructions,
           audio: {
             input: {
               transcription: {
                 model: "gpt-4o-transcribe",
+                language: sourceLanguage,
               },
             },
             output: {
-              language: targetLanguage,
+              voice: "marin",
             },
           },
         },
@@ -81,9 +89,10 @@ app.post("/session", async (req, res) => {
     res.json({
       value: findClientSecret(data),
       expiresAt: findExpiresAt(data),
-      model: realtimeTranslationModel,
+      model: realtimeModel,
+      sourceLanguage,
       targetLanguage,
-      callsUrl: realtimeTranslationCallsUrl,
+      callsUrl: realtimeCallsUrl,
     });
   } catch (error) {
     console.error("Realtime session creation error", {
