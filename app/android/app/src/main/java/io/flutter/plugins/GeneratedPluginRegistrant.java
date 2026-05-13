@@ -16,24 +16,19 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
-      flutterEngine.getPlugins().add(new com.cloudwebrtc.webrtc.FlutterWebRTCPlugin());
+      flutterEngine.getPlugins().add(new com.lib.flutter_pcm_sound.FlutterPcmSoundPlugin());
     } catch (Exception e) {
-      Log.e(TAG, "Error registering plugin flutter_webrtc, com.cloudwebrtc.webrtc.FlutterWebRTCPlugin", e);
-    }
-    try {
-      flutterEngine.getPlugins().add(new com.github.dart_lang.jni.JniPlugin());
-    } catch (Exception e) {
-      Log.e(TAG, "Error registering plugin jni, com.github.dart_lang.jni.JniPlugin", e);
-    }
-    try {
-      flutterEngine.getPlugins().add(new com.github.dart_lang.jni_flutter.JniFlutterPlugin());
-    } catch (Exception e) {
-      Log.e(TAG, "Error registering plugin jni_flutter, com.github.dart_lang.jni_flutter.JniFlutterPlugin", e);
+      Log.e(TAG, "Error registering plugin flutter_pcm_sound, com.lib.flutter_pcm_sound.FlutterPcmSoundPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new com.baseflow.permissionhandler.PermissionHandlerPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin permission_handler_android, com.baseflow.permissionhandler.PermissionHandlerPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new com.llfbandit.record.RecordPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin record_android, com.llfbandit.record.RecordPlugin", e);
     }
   }
 }

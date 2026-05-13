@@ -5,8 +5,10 @@
 import FlutterMacOS
 import Foundation
 
-import flutter_webrtc
+import flutter_pcm_sound
+import record_macos
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
-  FlutterWebRTCPlugin.register(with: registry.registrar(forPlugin: "FlutterWebRTCPlugin"))
+  FlutterPcmSoundPlugin.register(with: registry.registrar(forPlugin: "FlutterPcmSoundPlugin"))
+  RecordMacOsPlugin.register(with: registry.registrar(forPlugin: "RecordMacOsPlugin"))
 }

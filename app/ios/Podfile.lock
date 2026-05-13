@@ -1,35 +1,34 @@
 PODS:
   - Flutter (1.0.0)
-  - flutter_webrtc (1.4.0):
+  - flutter_pcm_sound (0.0.1):
     - Flutter
-    - WebRTC-SDK (= 144.7559.01)
   - permission_handler_apple (9.3.0):
     - Flutter
-  - WebRTC-SDK (144.7559.01)
+  - record_ios (1.2.0):
+    - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - flutter_webrtc (from `.symlinks/plugins/flutter_webrtc/ios`)
+  - flutter_pcm_sound (from `.symlinks/plugins/flutter_pcm_sound/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
-
-SPEC REPOS:
-  trunk:
-    - WebRTC-SDK
+  - record_ios (from `.symlinks/plugins/record_ios/ios`)
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  flutter_webrtc:
-    :path: ".symlinks/plugins/flutter_webrtc/ios"
+  flutter_pcm_sound:
+    :path: ".symlinks/plugins/flutter_pcm_sound/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  record_ios:
+    :path: ".symlinks/plugins/record_ios/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_webrtc: ec91d94b484ad49cf191ef93413f64a40ffd3b4c
+  flutter_pcm_sound: e9c2f6ce580eefcab2af46763f0354484d5c4ac8
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
-  WebRTC-SDK: ab9b5319e458c2bfebdc92b3600740da35d5630d
+  record_ios: 412daca2350b228e698fffcd08f1f94ceb1e3844
 
-PODFILE CHECKSUM: f8c2dcdfb50bb67645580d28a6bf814fca30bdec
+PODFILE CHECKSUM: 43e9bd4a5e0a6954e7e18292dc36580fbb9bad80
 
 COCOAPODS: 1.16.2

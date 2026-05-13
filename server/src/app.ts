@@ -1,3 +1,4 @@
+import { GoogleGenAI, type LiveConnectConfig } from "@google/genai";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -6,12 +7,14 @@ import { buildBidirectionalTranslationInstructions } from "./prompts.js";
 dotenv.config();
 
 const app = express();
-const openAiApiKey = process.env.OPENAI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
-const realtimeModel = "gpt-realtime";
-const realtimeClientSecretsUrl =
-  "https://api.openai.com/v1/realtime/client_secrets";
-const realtimeCallsUrl = "https://api.openai.com/v1/realtime/calls";
+const geminiLiveModel =
+  process.env.GEMINI_LIVE_MODEL ??
+  "gemini-2.5-flash-native-audio-preview-12-2025";
+const geminiApiVersion = "v1alpha";
+const geminiWebsocketBaseUrl =
+  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
 
 app.use(express.json({ limit: "16kb" }));
 
@@ -23,8 +26,8 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/session", async (req, res) => {
-  if (!openAiApiKey) {
-    res.status(500).json({ error: "OPENAI_API_KEY is not configured" });
+  if (!geminiApiKey) {
+    res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
     return;
   }
 
@@ -34,75 +37,97 @@ app.post("/session", async (req, res) => {
     primaryLanguage,
     secondaryLanguage,
   );
+  const liveConfig = buildGeminiLiveConfig(instructions);
 
   try {
-    const response = await fetch(realtimeClientSecretsUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openAiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session: {
-          type: "realtime",
-          model: realtimeModel,
-          instructions,
-          audio: {
-            input: {
-              transcription: {
-                model: "gpt-4o-transcribe",
-              },
-            },
-            output: {
-              voice: "marin",
-            },
-          },
+    const ai = new GoogleGenAI({
+      apiKey: geminiApiKey,
+      apiVersion: geminiApiVersion,
+    });
+    const token = await ai.authTokens.create({
+      config: {
+        uses: 1,
+        newSessionExpireTime: new Date(Date.now() + 60_000).toISOString(),
+        expireTime: new Date(Date.now() + 30 * 60_000).toISOString(),
+        liveConnectConstraints: {
+          model: geminiLiveModel,
+          config: liveConfig,
         },
-      }),
+        lockAdditionalFields: [
+          "responseModalities",
+          "systemInstruction",
+          "inputAudioTranscription",
+          "outputAudioTranscription",
+          "realtimeInputConfig",
+          "temperature",
+        ],
+      },
     });
 
-    const data = (await response.json()) as OpenAiClientSecretResponse;
-
-    if (!response.ok) {
-      console.error("OpenAI Realtime session creation failed", {
-        status: response.status,
-        code: data.error?.code,
-        message: data.error?.message,
-        param: data.error?.param,
-        type: data.error?.type,
-      });
-
-      res.status(response.status).json({
-        error: "Failed to create realtime session",
-        status: response.status,
-        openai: {
-          code: data.error?.code,
-          message: data.error?.message,
-          param: data.error?.param,
-          type: data.error?.type,
-        },
-      });
+    if (!token.name) {
+      res.status(502).json({ error: "Gemini session token was empty" });
       return;
     }
 
     res.json({
-      value: findClientSecret(data),
-      expiresAt: findExpiresAt(data),
-      model: realtimeModel,
+      provider: "gemini",
+      token: token.name,
+      expiresAt: Math.floor((Date.now() + 30 * 60_000) / 1000),
+      model: geminiLiveModel,
       primaryLanguage,
       secondaryLanguage,
-      callsUrl: realtimeCallsUrl,
+      websocketUrl: `${geminiWebsocketBaseUrl}?access_token=${encodeURIComponent(
+        token.name,
+      )}`,
+      setup: {
+        setup: {
+          model: `models/${geminiLiveModel}`,
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            temperature: 0.2,
+          },
+          systemInstruction: {
+            parts: [{ text: instructions }],
+          },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              silenceDurationMs: 900,
+            },
+          },
+        },
+      },
     });
   } catch (error) {
-    console.error("Realtime session creation error", {
+    console.error("Gemini Live session creation error", {
       message: error instanceof Error ? error.message : "Unknown error",
     });
 
-    res.status(500).json({ error: "Failed to create realtime session" });
+    res.status(500).json({ error: "Failed to create Gemini Live session" });
   }
 });
 
 export default app;
+
+function buildGeminiLiveConfig(instructions: string): LiveConnectConfig {
+  return {
+    responseModalities: ["AUDIO"],
+    temperature: 0.2,
+    systemInstruction: {
+      parts: [{ text: instructions }],
+    },
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
+    realtimeInputConfig: {
+      automaticActivityDetection: {
+        disabled: false,
+        silenceDurationMs: 900,
+      },
+    },
+  } as LiveConnectConfig;
+}
 
 function parseLanguage(value: unknown, fallback: string): string {
   if (typeof value !== "string") {
@@ -117,40 +142,3 @@ function parseLanguage(value: unknown, fallback: string): string {
 
   return trimmed;
 }
-
-function findClientSecret(data: OpenAiClientSecretResponse): string | undefined {
-  return (
-    data.value ??
-    data.client_secret?.value ??
-    data.session?.client_secret?.value
-  );
-}
-
-function findExpiresAt(data: OpenAiClientSecretResponse): number | undefined {
-  return (
-    data.expires_at ??
-    data.client_secret?.expires_at ??
-    data.session?.client_secret?.expires_at
-  );
-}
-
-type OpenAiClientSecretResponse = {
-  value?: string;
-  expires_at?: number;
-  client_secret?: {
-    value?: string;
-    expires_at?: number;
-  };
-  session?: {
-    client_secret?: {
-      value?: string;
-      expires_at?: number;
-    };
-  };
-  error?: {
-    code?: string;
-    message?: string;
-    param?: string;
-    type?: string;
-  };
-};
